@@ -52,6 +52,7 @@
 
 (require 'smie)
 
+
 (defconst vimscript-smie-grammar
   (smie-prec2->grammar
    (smie-merge-prec2s
@@ -66,7 +67,7 @@
             ("if" exp "elseif" exp "else" exp "endif")
             ("try" exp "catch" exp "endtry")
             ("function" exp "endfunction")
-            ("while" exp "endwhile")
+            ("while" exp "endwhile")    
             ("for" exp "endfor")
             ("[" listvals "]")
             ("{" hashvals "}"))
@@ -84,8 +85,8 @@
   (pcase (cons kind token)
     (`(:elem . basic) vimscript-indent-offset)
     (`(:elem . args) 0)
-    (`(:close-all . ,_) t)
-    (`(:list-intro . ,(or `"" `"\n")) t)
+    ;; (`(:close-all . ,_) t)
+    ;; (`(:list-intro . ,(or `"" `"\n")) t)
     ;; (`(:before . ""))
 
     ;; (`(:after . ,(or `"(" "[" "{"))
