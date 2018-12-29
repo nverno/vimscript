@@ -1,4 +1,4 @@
-;;; vimscript --- Major mode for vimscript
+;;; vimscript --- Major mode for vimscript -*- lexical-binding: t; -*-
 
 ;; Author: Noah Peart <noah.v.peart@gmail.com>
 ;; URL: https://github.com/nverno/vimscript
@@ -30,15 +30,13 @@
 ;;; Code:
 (eval-when-compile
   (require 'vimscript-keywords)
-  (require 'cl-lib)
-  ;; (require 'dash)
-  )
+  (require 'cl-lib))
 
 (defgroup vimscript nil
   "Major mode for editing Vim script files."
   :group 'languages)
 
-(defcustom vimscript-indent-offset 2
+(defcustom vimscript-indent-offset 4
   "Default indentation level to use in `vimscript-mode'."
   :group 'vimscript-mode
   :type 'integer)
@@ -47,7 +45,6 @@
   "When non-nil use `smie' for indentation.")
 
 ;; ------------------------------------------------------------
-
 ;;; Indentation
 
 (require 'smie)
@@ -126,7 +123,7 @@
             do (put-text-property 0 1 'annot "Ex Command" k)
             collect k)
        ,@(cl-loop for k in kw-function
-            do (put-text-property 0 1'annot "Function" k)
+            do (put-text-property 0 1 'annot "Function" k)
             collect k)))))
 
 (defun vimscript-capf-annotation (candidate)
@@ -327,7 +324,7 @@ With argument, repeat ARG times."
     (smie-setup vimscript-smie-grammar #'vimscript-smie-rules
                 :forward-token #'smie-default-forward-token
                 :backward-token #'vimscript-smie--backward-token))
-
+  (electric-indent-local-mode -1)
   ;; completion
   (add-hook 'completion-at-point-functions
             'vimscript-complete-at-point nil 'local))

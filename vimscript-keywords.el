@@ -1,4 +1,4 @@
-;;; vimscript-keywords --- keywords from `vimrc-mode'
+;;; vimscript-keywords --- keywords from `vimrc-mode' -*- lexical-binding: t; -*-
 ;;; Code
 
 ;; options that can follow 'no'
