@@ -5,13 +5,13 @@ let tst="a
 \ b
 \ c"
 
-echo tst
+    echo tst
 
-if 1 ||
+    if 1 ||
 \ 2
   echom 1
-elseif 2
-       echom "ann"
+    elseif 2
+           echom "ann"
     endif
 
     "Step through each file...
