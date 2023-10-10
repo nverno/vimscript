@@ -43,6 +43,16 @@
   :type 'integer
   :safe 'integerp)
 
+(defface vimscript-ts-mode-register-face
+  '((t (:inherit font-lock-variable-name-face :weight bold)))
+  "Face to highlight registers in `vimscript-ts-mode'."
+  :group 'vim)
+
+(defface vimscript-ts-mode-scope-face
+  '((t (:inherit font-lock-type-face :slant italic)))
+  "Face to highlight namespaces in `vimscript-ts-mode'."
+  :group 'vim)
+
 ;;; Syntax
 
 (defvar vimscript-ts-mode--syntax-table
@@ -80,7 +90,7 @@
 
 (defvar vimscript-ts-mode--feature-list
   '(( comment definition)
-    ( keyword string builtin)
+    ( keyword string)
     ( assignment property type constant literal operator function escape-sequence)
     ( bracket delimiter variable misc-punctuation error))
   "`treesit-font-lock-feature-list' for `vimscript-ts-mode'.")
@@ -141,6 +151,7 @@
    '((function_declaration
       name: (_) @font-lock-function-name-face)
      (command_name) @font-lock-function-name-face
+     (register) @vimscript-ts-mode-register-face
      (default_parameter (identifier) @font-lock-variable-name-face)
      (parameters (identifier) @font-lock-variable-name-face)
      [(no_option) (inv_option) (default_option) (option_name)] @font-lock-variable-name-face
@@ -170,10 +181,10 @@
 
    :language 'vim
    :feature 'type
-   '((augroup_name) @font-lock-type-face
-     (hl_group) @font-lock-type-face
+   '((augroup_name) @vimscript-ts-mode-scope-face
      (keycode) @font-lock-type-face
-     [(scope) "a:" "$"] @font-lock-type-face)
+     (hl_group) @vimscript-ts-mode-scope-face
+     [(scope) "a:" "$"] @vimscript-ts-mode-scope-face)
    
    :language 'vim
    :feature 'constant
@@ -194,14 +205,7 @@
        (scope) @_scope
        (identifier) @font-lock-constant-face
        (:match "\\(?:true\\|false\\)\\'" @font-lock-constant-face))))
-   
-   :language 'vim
-   :feature 'assignment
-   '((set_item
-      option: (option_name) @font-lock-variable-name-face)
-     (let_statement (_) @font-lock-variable-name-face)
-     (env_variable (identifier) @font-lock-variable-name-face))
-   
+      
    :language 'vim
    :feature 'function
    `((call_expression
@@ -221,6 +225,18 @@
                eos))
        @_option)))
    
+   :language 'vim
+   :feature 'assignment
+   :override 'keep
+   '((set_item
+      option: (option_name) @font-lock-variable-name-face
+      value: (set_value) @font-lock-string-face)
+     (let_statement (_) @font-lock-variable-name-face)
+     (env_variable (identifier) @font-lock-variable-name-face)
+     (map_statement
+      lhs: (map_side) @font-lock-variable-name-face
+      rhs: _ @font-lock-string-face))
+
    :language 'vim
    :feature 'operator
    `([(match_case) (bang) (spread) ,@vimscript-ts-mode--operators]
@@ -269,6 +285,13 @@
           "heredoc" "colorscheme"))
   "See `treesit-text-type-regexp' for more information.")
 
+;;; Imenu
+
+(defvar vimscript-ts-mode--imenu-settings
+  `(("Function" "\\`function_declaration\\'")
+    ("Command" "\\`command_statement\\'"))
+  "See `treesit-simple-imenu-settings' for more information.")
+
 ;;;###autoload
 (define-derived-mode vimscript-ts-mode prog-mode "Vim"
   "Major mode for vimscript buffers
@@ -305,8 +328,7 @@
                    (text ,vimscript-ts-mode--text-nodes))))
 
     ;; Imenu
-    (setq-local treesit-simple-imenu-settings
-                `(("Function" "\\`function_declaration\\'")))
+    (setq-local treesit-simple-imenu-settings vimscript-ts-mode--imenu-settings)
 
     (treesit-major-mode-setup)))
 
