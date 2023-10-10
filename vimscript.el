@@ -2,9 +2,11 @@
 
 ;; Author: Noah Peart <noah.v.peart@gmail.com>
 ;; URL: https://github.com/nverno/vimscript
-;; Package-Requires: 
+;; Package-Requires: ((emacs "29.1"))
 ;; Copyright (C) 2016, Noah Peart, all rights reserved.
 ;; Created: 29 October 2016
+;; Keywords: languages vim
+;; Version: 0.0.1
 
 ;; This file is not part of GNU Emacs.
 ;;
@@ -24,10 +26,11 @@
 ;; Floor, Boston, MA 02110-1301, USA.
 
 ;;; Commentary:
-
+;;
 ;; [![Build Status](https://travis-ci.org/nverno/vimscript.svg?branch=master)](https://travis-ci.org/nverno/vimscript)
-
+;;
 ;;; Code:
+
 (eval-when-compile
   (require 'vimscript-keywords)
   (require 'cl-lib))
