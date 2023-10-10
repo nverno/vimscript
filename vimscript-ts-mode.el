@@ -48,9 +48,24 @@
   "Face to highlight registers in `vimscript-ts-mode'."
   :group 'vim)
 
+(defface vimscript-ts-mode-keycode-face
+  '((t (:inherit font-lock-constant-face :slant italic)))
+  "Face to highlight keycodes in `vimscript-ts-mode'."
+  :group 'vim)
+
 (defface vimscript-ts-mode-scope-face
   '((t (:inherit font-lock-type-face :slant italic)))
   "Face to highlight namespaces in `vimscript-ts-mode'."
+  :group 'vim)
+
+(defface vimscript-ts-mode-regexp-face
+  '((t (:inherit font-lock-regexp-face)))
+  "Face to highlight regexps in `vimscript-ts-mode'."
+  :group 'vim)
+
+(defface vimscript-ts-mode-heredoc-face
+  '((t (:inherit font-lock-preprocessor-face)))
+  "Face to highlight here-documents in `vimscript-ts-mode'."
   :group 'vim)
 
 ;;; Syntax
@@ -58,9 +73,18 @@
 (defvar vimscript-ts-mode--syntax-table
   (let ((table (make-syntax-table)))
     (modify-syntax-entry ?'  "\"" table)
-    (modify-syntax-entry ?\" "<"  table)
+    ;; (modify-syntax-entry ?\" "<"  table)
     (modify-syntax-entry ?\n ">"  table)
     (modify-syntax-entry ?#  "_"  table)
+    (modify-syntax-entry ?& "'" table)
+    (modify-syntax-entry ?= "." table)
+    (modify-syntax-entry ?- "." table)
+    (modify-syntax-entry ?+ "." table)
+    (modify-syntax-entry ?* "." table)
+    (modify-syntax-entry ?| "." table)
+    (modify-syntax-entry ?< "." table)
+    (modify-syntax-entry ?> "." table)
+    (modify-syntax-entry ?@ "." table)
     table)
   "Syntax table in use in Vimscript buffers.")
 
@@ -79,9 +103,14 @@
      ((node-is "endfunction") parent-bol 0)
      ((node-is "endfunc") parent-bol 0)
      ((node-is "catch") parent-bol 0)
+     ((node-is "finally") parent-bol 0)
      ((node-is "endtry") parent-bol 0)
+     ((node-is "endmarker") grand-parent 0)
+     ((n-p-gp "" "body" "heredoc") no-indent 0)
+     ((n-p-gp "" "body" "script") no-indent)
      ((n-p-gp "" "body" "else_statement") grand-parent vimscript-ts-mode-indent-level)
      ((parent-is "body") parent-bol 0)
+     ((parent-is "heredoc") no-indent)
      (no-node parent-bol vimscript-ts-mode-indent-level)
      (catch-all parent-bol vimscript-ts-mode-indent-level)))
   "Tree-sitter indentation rules for vimscript.")
@@ -92,19 +121,20 @@
   '(( comment definition)
     ( keyword string)
     ( assignment property type constant literal operator function escape-sequence)
-    ( bracket delimiter variable misc-punctuation error))
+    ( bracket delimiter variable misc-punctuation)) ;; error
   "`treesit-font-lock-feature-list' for `vimscript-ts-mode'.")
 
 (defvar vimscript-ts-mode--operators
   '("||" "&&" "&" "+" "-" "*" "/" "%" ".." "is" "isnot" "==" "!=" ">" ">=" "<"
-    "<=" "=~" "!~" "=" "+=" "-=" "*=" "/=" "%=" ".=" "..=" "<<" "=<<")
+    "<=" "=~" "!~" "=" "+=" "-=" "*=" "/=" "%=" ".=" "..=" "<<" "=<<"
+    "->" "++")
   "Vimscript operators for tree-sitter font-locking.")
 
 (defvar vimscript-ts-mode--keywords
   '("if" "else" "elseif" "endif"        ; conditionals
     "try" "catch" "finally" "endtry" "throw" ; exceptions
     "for" "endfor" "in" "while" "endwhile" "break" "continue" ; loops
-    "function" "endfunction" "return" "range"            ; functions
+    "function" "endfunction" "return" "dict" "range" "abort" "closure" ; functions
     ;; filetype
     "detect" "plugin" "indent" "on" "off"
     ;; syntax statement
@@ -122,6 +152,62 @@
     "edit" "enew" "find" "ex" "visual" "view" "eval")
   "Vimscript keywords for tree-sitter font-locking.")
 
+(defun vimscript-ts-mode--fontify-syntax-pattern (node override &rest _)
+  "Fontify pattern NODE with OVERRIDE."
+  (let ((beg (treesit-node-start node))
+        (end (treesit-node-end node)))
+    (treesit-fontify-with-override      ; include '/' (pattern) '/' in highlight
+     (1- beg) (1+ end) 'vimscript-ts-mode-regexp-face override)))
+
+(defun vimscript-ts-mode--fontify-escape (node override &rest _)
+  "Fontify escape sequence NODE with OVERRIDE."
+  (let* ((beg (treesit-node-start node))
+         (end (treesit-node-end node))
+         (face (pcase (char-after end)
+                 ((or ?. ?* ?~ ?\\ ?^ ?$ ?/ ?\[ ?\] 32) ; lose their magic
+                  'font-lock-negation-char-face)
+                 ((or ?_ ?z ?%)         ; three char escapes, eg. \zs
+                  (cl-incf end 2)
+                  'font-lock-escape-face)
+                 (?@ (cl-incf end)      ; lookahead
+                     'font-lock-operator-face)
+                 (_ (cl-incf end)       ; two char escapes
+                    'font-lock-escape-face))))
+    (treesit-fontify-with-override beg end face override)))
+
+;;; TODO: syntactic
+;; - (pattern) -> string syntax
+;; - (string_literal) -> string syntax
+(defvar vimscript-ts-mode--s-p-query
+  (when (treesit-available-p)
+    (treesit-query-capture 'vim
+                           '(((syntax_argument (pattern) @regexp))
+                             ((syntax_statement (pattern) @regexp))
+                             ((pattern) @string)
+                             ((pattern_multi) @string)
+                             ((comment) @comment)
+                             ;; (([(pattern) (pattern_multi)] @string))
+                             ;; ((string_literal) @string)
+                             ))))
+
+(defun vimscript-ts-mode--syntax-propertize (beg end)
+  (let ((captures (treesit-query-capture 'vim vimscript-ts-mode--s-p-query beg end)))
+    (pcase-dolist (`(,name . ,node) captures)
+      (let* ((ns (treesit-node-start node))
+             (ne (treesit-node-end node))
+             (syntax (pcase-exhaustive name
+                       ('regexp
+                        (cl-decf ns)
+                        (cl-incf ne)
+                        (string-to-syntax "\"/"))
+                       ('string
+                        (string-to-syntax "\"/"))
+                       ('comment
+                        (string-to-syntax ">")))))
+        (put-text-property ns (1+ ns) 'syntax-table syntax)
+        (unless (eq 'comment name)
+          (put-text-property (1- ne) ne 'syntax-table syntax))))))
+
 (defvar vimscript-ts-mode--font-lock-settings
   (treesit-font-lock-rules
    :language 'vim
@@ -130,11 +216,35 @@
 
    :language 'vim
    :feature 'string
-   '([(command) (filename) (string_literal) (pattern)] @font-lock-string-face
-     [(pattern_multi)] @font-lock-regexp-face
+   '((binary_operation
+      _ "=~" (match_case) :?
+      right: (string_literal) @vimscript-ts-mode-regexp-face)
+     (syntax_argument [(pattern)] @vimscript-ts-mode--fontify-syntax-pattern)
+     (syntax_statement [(pattern)] @vimscript-ts-mode--fontify-syntax-pattern)
+     [(pattern) (pattern_multi)] @vimscript-ts-mode-regexp-face
+     
+     [(command) (filename) (string_literal)] @font-lock-string-face
      (heredoc (body) @font-lock-string-face)
      (colorscheme_statement (name) @font-lock-string-face)
-     (syntax_statement (keyword) @font-lock-string-face))
+     (syntax_statement (keyword) @font-lock-string-face)
+
+     ;; embedded langs
+     ;; (python_statement (chunk))
+     ;; (perl_statement (chunk))
+     ;; (ruby_statement (chunk))
+     (script (body) @vimscript-ts-mode-heredoc-face))
+   
+   :language 'vim
+   :feature 'escape-sequence
+   :override 'prepend
+   `((pattern ["\\"] @vimscript-ts-mode--fontify-escape)
+     (pattern ["\\&"] @font-lock-operator-face)
+
+     ((pattern_multi) @font-lock-number-face
+      (:match ,(rx "\\{") @font-lock-number-face))
+     (pattern_multi) @font-lock-operator-face
+     
+     ["\\|" "\\(" "\\)" "\\%(" "\\z("] @font-lock-regexp-grouping-construct)
    
    :language 'vim
    :feature 'keyword
@@ -150,50 +260,54 @@
    :feature 'definition
    '((function_declaration
       name: (_) @font-lock-function-name-face)
+
      (command_name) @font-lock-function-name-face
+
+     (bang) @font-lock-warning-face
      (register) @vimscript-ts-mode-register-face
+
      (default_parameter (identifier) @font-lock-variable-name-face)
-     (parameters (identifier) @font-lock-variable-name-face)
+     (parameters [(identifier)] @font-lock-variable-name-face)
      [(no_option) (inv_option) (default_option) (option_name)] @font-lock-variable-name-face
-     (bang) @font-lock-negation-char-face
+     (lambda_expression "{" [(identifier)] @font-lock-variable-name-face "->")
+     
      [(marker_definition) (endmarker)] @font-lock-type-face)
    
-   ;; :language 'vim
-   ;; :feature 'builtin
-   ;; '([(no_option) (inv_option) (default_option) ;; (option_name)
-   ;;    ] @font-lock-builtin-face)
-
    :language 'vim
    :feature 'property
    '((command_attribute
       name: _ @font-lock-property-name-face
-      ;; val: (behaviour
-      ;;       name: _ @font-lock-constant-face
-      ;;       val: (identifier) :? @font-lock-function-name-face)
-      ;; :?
-      )
+      val: (behavior
+            name: _ @font-lock-constant-face
+            val: (identifier) @font-lock-function-name-face :?)
+      :?)
+     
      (hl_attribute
       key: _ @font-lock-property-name-face)
+
      (plus_plus_opt
+      name: _ @font-lock-property-name-face
       val: _ @font-lock-constant-face :?)
-     @font-lock-property-name-face
-     (plus_cmd) @font-lock-property-name-face)
+     (plus_cmd) @font-lock-property-name-face
+
+     (dictionnary_entry
+      key: (_) @font-lock-property-name-face))
 
    :language 'vim
    :feature 'type
+   :override 'prepend
    '((augroup_name) @vimscript-ts-mode-scope-face
-     (keycode) @font-lock-type-face
+     (keycode) @vimscript-ts-mode-keycode-face
      (hl_group) @vimscript-ts-mode-scope-face
-     [(scope) "a:" "$"] @vimscript-ts-mode-scope-face)
+     [(scope) (scope_dict) "a:" "$"] @vimscript-ts-mode-scope-face)
    
    :language 'vim
    :feature 'constant
    '(((identifier) @font-lock-constant-face
       (:match "\\`[A-Z][A-Z_0-9]*\\'" @font-lock-constant-face))
-     (au_event) @font-lock-constant-face
+     [(au_event) (au_once) (au_nested)] @font-lock-constant-face
      (normal_statement (commands) @font-lock-constant-face)
-     (hl_attribute
-      val: _ @font-lock-constant-face))
+     (hl_attribute _ "=" _ @font-lock-constant-face))
    
    :language 'vim
    :feature 'literal
@@ -205,13 +319,39 @@
        (scope) @_scope
        (identifier) @font-lock-constant-face
        (:match "\\(?:true\\|false\\)\\'" @font-lock-constant-face))))
-      
+         
+   :language 'vim
+   :feature 'operator
+   `([(match_case) (bang) (spread) ,@vimscript-ts-mode--operators]
+     @font-lock-operator-face
+     (unary_operation "!" @font-lock-negation-char-face)
+     (binary_operation "." @font-lock-operator-face)
+     (ternary_expression ["?" ":"] @font-lock-operator-face)
+     (set_item "?" @font-lock-operator-face)
+     (inv_option "!" @font-lock-negation-char-face)
+     (edit_statement ["#"] @font-lock-punctuation-face))
+
+   :language 'vim
+   :feature 'bracket
+   '(["(" ")" "{" "}" "[" "]" "#{"] @font-lock-bracket-face)
+
+   :language 'vim
+   :feature 'delimiter
+   '(["," ";" ":"] @font-lock-delimiter-face
+     (field_expression "."  @font-lock-delimiter-face))
+
    :language 'vim
    :feature 'function
+   ;; :override 'keep
    `((call_expression
-      function: (identifier) @font-lock-function-call-face)
+      ;; XXX: how to match preceding part only of
+      ;; function: (identifier (curly_brace_name))
+      function: (identifier) @font-lock-function-call-face
+      "(" [(identifier)] @font-lock-variable-use-face :* ")")
+
      (call_expression
       function: (scoped_identifier (identifier) @font-lock-function-call-face))
+     
      ((set_item
        option: (option_name) @_option
        value: (set_value) @font-lock-function-name-face)
@@ -224,7 +364,11 @@
                    "operatorfunc" "opfunc")
                eos))
        @_option)))
-   
+
+   :language 'vim
+   :feature 'variable
+   '((identifier) @font-lock-variable-use-face)
+
    :language 'vim
    :feature 'assignment
    :override 'keep
@@ -237,29 +381,6 @@
       lhs: (map_side) @font-lock-variable-name-face
       rhs: _ @font-lock-string-face))
 
-   :language 'vim
-   :feature 'operator
-   `([(match_case) (bang) (spread) ,@vimscript-ts-mode--operators]
-     @font-lock-operator-face
-     (unary_operation "!" @font-lock-negation-char-face)
-     (binary_operation "." @font-lock-operator-face)
-     (ternary_expression ["?" ":"] @font-lock-operator-face)
-     (set_item "?" @font-lock-operator-face)
-     (inv_option "!" @font-lock-negation-char-face))
-
-   :language 'vim
-   :feature 'variable
-   '((identifier) @font-lock-variable-use-face)
-
-   :language 'vim
-   :feature 'bracket
-   '(["(" ")" "{" "}" "[" "]" "#{"] @font-lock-bracket-face)
-
-   :language 'vim
-   :feature 'delimiter
-   '(["," ";" ":"] @font-lock-delimiter-face
-     (field_expression "."  @font-lock-delimiter-face))
-   
    :language 'vim
    :feature 'error
    :override t
@@ -281,8 +402,7 @@
   "See `treesit-sexp-type-regexp' for more information.")
 
 (defvar vimscript-ts-mode--text-nodes
-  (rx (or "comment" "string_literal" "filename" "pattern"
-          "heredoc" "colorscheme"))
+  (rx (or "comment" "string" "filename" "pattern" "heredoc" "colorscheme"))
   "See `treesit-text-type-regexp' for more information.")
 
 ;;; Imenu
@@ -329,6 +449,8 @@
 
     ;; Imenu
     (setq-local treesit-simple-imenu-settings vimscript-ts-mode--imenu-settings)
+
+    (setq-local syntax-propertize-function #'vimscript-ts-mode--syntax-propertize)
 
     (treesit-major-mode-setup)))
 
