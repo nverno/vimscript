@@ -14,18 +14,11 @@ test:
 	$(emacs) -Q -batch -L . -l ert -l test/vimscript-tests.el \
 	-f ert-run-tests-batch-and-exit
 
-README.md : el2markdown.el vimscript.el
-	$(emacs) -batch -l $< vimscript.el -f el2markdown-write-readme
-
-.INTERMEDIATE: el2markdown.el
-el2markdown.el:
-	$(wget) -q -O $@ "https://github.com/Lindydancer/el2markdown/raw/master/el2markdown.el"
-
 # Tree-sitter
 dev: $(TSDIR)
 $(TSDIR):
 	@git clone --depth=1 $(TS_REPO)
-	@printf "\33[1m\33[31mNote\33[22m npm build can take a while" >&2
+	@printf "\e[1m\e[31mNote\e[22m npm build can take a while\n" >&2
 	cd $(TSDIR) &&                                         \
 		npm --loglevel=info --progress=true install && \
 		npm run generate

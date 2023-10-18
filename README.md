@@ -1,8 +1,15 @@
-*Author:* Noah Peart <noah.v.peart@gmail.com><br>
-*URL:* [https://github.com/nverno/vimscript](https://github.com/nverno/vimscript)<br>
+## Vimscript major-mode
 
-[![Build Status](https://travis-ci.org/nverno/vimscript.svg?branch=master)](https://travis-ci.org/nverno/vimscript)
+Emacs major-mode for vimscript buffers.
 
+For much better support, use the tree-sitter mode [vimscript-ts-mode](https://github.com/nverno/vimscript-ts-mode).
 
----
-Converted from `vimscript.el` by [*el2markdown*](https://github.com/Lindydancer/el2markdown).
+Features:
+
+  - font-locking
+  - imenu
+  - minimal completion-at-point
+
+Broken:
+
+  - indentation (use tree-sitter mode for indentation support)
