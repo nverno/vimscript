@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 (require 'vimscript)
 (require 'ert)
 
